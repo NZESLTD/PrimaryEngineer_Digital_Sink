@@ -1,6 +1,9 @@
 #include <Arduino.h>
 #include "flow_sensor.h"
 
+/// For Knowledge:
+// https://arduino.stackexchange.com/questions/83702/adding-another-flow-sensor-to-sketch
+
 // Define variables for the flow rate
 volatile unsigned int pulseCount;
 
@@ -15,30 +18,36 @@ void start_flow_sensor(const int &flowSensorPin, const char* flowID){
   // Initialise the Flow Meter
   pinMode(flowSensorPin, INPUT_PULLUP);
 
-  // Attach an Interrupt to the flow meter pin
   attachInterrupt(digitalPinToInterrupt(flowSensorPin), pulseCounter, FALLING);
-
 }
 
 float loop_flow_sensor(const char* flowID){
-  static float flowRate;
+  static uint8_t oldPulseCount = 0;
+  static float flowRate = 0;
+  static unsigned long previousRead = 0;
 
-  // Reset pulse count and flow duration
-  pulseCount = 0;
-  interrupts(); // Enable interrupts
-  delay(1000);  // Wait for one second to count pulses
-  noInterrupts(); // Disable interrupts to avoid interference with pulse co
+  // Check if one second has elapsed since the last measurement
+  unsigned long currentMillis = millis();
+  if (currentMillis - previousRead >= 1000) {
+    // NOTE: Using uint8_t flowrate cannot exceed 33.7L/min, use uint16_t for above
+    uint8_t newPulseCount = pulseCount;
+    uint8_t pulseCountDifference = newPulseCount - oldPulseCount;
+    oldPulseCount = newPulseCount;
 
-  // Flow Rate Calculations
-  // Need to confirm ML / pulse with actual sensor from amazon
-  flowRate = (pulseCount * 0.45); // pulse count * ml/pulse (total flow per second)
-  flowRate = (flowRate * 60); // Flow Rate per minute
-  flowRate = flowRate / 1000; // Flow Rate in Litres/min
+    // Reset pulse count and flow duration
+    flowRate = (pulseCount * 0.45); // pulse count * ml/pulse (total flow per second)
+    flowRate = (flowRate * 60); // Flow Rate per minute
+    flowRate = flowRate / 1000; // Flow Rate in Litres/min
 
-  String idMessage = String(flowID) + " - Flow Rate:";
-  Serial.print(idMessage);
-  Serial.println(flowRate);
-  Serial.print(" L/min");
+    String idMessage = String(flowID) + " - Flow Rate:";
+    Serial.print(idMessage);
+    Serial.println(flowRate);
+    Serial.print(" L/min");
+
+    // Reset pulse count and update previousRead
+    pulseCount = 0;
+    previousRead = currentMillis;
+  }
 
   return flowRate;
 }
